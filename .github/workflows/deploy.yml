@@ -1,16 +1,57 @@
-name: Deploy static site
+# CI/CD для сайта GYM FORCE: сначала автопроверки (lint), затем публикация на GitHub Pages.
+# Файл лежит по пути .github/workflows/deploy.yml
 
+name: CI/CD GYM FORCE
+
+# Запуск: при каждом push в main и вручную (кнопка Run workflow на вкладке Actions)
 on:
   push:
     branches: [ main ]
+  workflow_dispatch:
 
 permissions:
   contents: read
   pages: write
   id-token: write
 
+# Новый запуск отменяет предыдущий, который ещё не завершился
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
 jobs:
+  # ---------- Задание 1: автопроверки качества ----------
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Проверка HTML (HTMLHint)
+        run: npx --yes htmlhint@1.1.4 --config .htmlhintrc index.html
+
+      - name: Проверка CSS (Stylelint)
+        run: npx --yes stylelint@16.10.0 "css/*.css"
+
+      - name: Проверка синтаксиса JavaScript
+        run: node --check js/main.js
+
+      - name: Проверка наличия файлов, на которые ссылается страница
+        run: |
+          missing=0
+          while IFS= read -r f; do
+            if [ -f "$f" ]; then echo "OK   $f"; else echo "НЕТ  $f"; missing=1; fi
+          done < <(grep -oE '(src|href)="[^"#:]+"' index.html | sed -E 's/^(src|href)="//; s/"$//' | sort -u)
+          exit $missing
+
+  # ---------- Задание 2: публикация (только если lint прошёл) ----------
   deploy:
+    needs: lint
     runs-on: ubuntu-latest
     environment:
       name: github-pages
